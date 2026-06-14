@@ -3,7 +3,6 @@
 ## Overview
 This project focuses on sentiment analysis of Malaysian e-commerce product reviews collected from Shopee Malaysia and Lazada Malaysia.
 
----
 
 ## Team Members
 1. Kueh Pang Teng (leader)
@@ -11,7 +10,6 @@ This project focuses on sentiment analysis of Malaysian e-commerce product revie
 3. Nur Insyirah Iman binti Mohd Azman
 4. Sofia Batrisyia binti Mohamad Faris
 
----
 
 ## Objectives
 - Collect and analyze Malaysian e-commerce product reviews.
@@ -20,7 +18,6 @@ This project focuses on sentiment analysis of Malaysian e-commerce product revie
 - Compare model performance using standard evaluation metrics.
 - Deploy a web-based sentiment prediction system.
 
----
 
 ## Dataset
 
@@ -45,7 +42,6 @@ Collected attributes:
 | review_text | Customer review |
 | sentiment | Positive / Neutral / Negative |
 
----
 
 ## Project Workflow
 1. Data Collection
@@ -56,11 +52,9 @@ Collected attributes:
 6. Deployment
 7. Advanced Features
 
----
 
 ## Project Structure
 
----
 
 ## Planned Technologies
 - Python
@@ -72,7 +66,6 @@ Collected attributes:
 - Streamlit
 - Matplotlib
 
----
 
 ## Evaluation Metrics
 The models will be evaluated using:
