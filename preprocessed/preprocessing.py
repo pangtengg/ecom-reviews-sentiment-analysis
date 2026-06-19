@@ -109,6 +109,57 @@ SLANG_DICT = {
     'gg': '', 'lol': '', 'xd': '',
 }
 
+CONTRACTIONS = {
+    "i'm": "i am",
+    "i've": "i have",
+    "i'll": "i will",
+    "i'd": "i would",
+    "don't": "do not",
+    "doesn't": "does not",
+    "didn't": "did not",
+    "can't": "cannot",
+    "couldn't": "could not",
+    "won't": "will not",
+    "wouldn't": "would not",
+    "isn't": "is not",
+    "aren't": "are not",
+    "wasn't": "was not",
+    "weren't": "were not",
+    "haven't": "have not",
+    "hasn't": "has not",
+    "hadn't": "had not",
+    "shouldn't": "should not",
+    "mustn't": "must not",
+    "it's": "it is",
+    "that's": "that is",
+    "there's": "there is",
+    "they're": "they are",
+    "they've": "they have",
+    "they'll": "they will",
+    "we're": "we are",
+    "we've": "we have",
+    "we'll": "we will",
+    "you're": "you are",
+    "you've": "you have",
+    "you'll": "you will",
+    "he's": "he is",
+    "she's": "she is",
+    "let's": "let us",
+    "what's": "what is",
+    "who's": "who is",
+    "that'll": "that will",
+    "would've": "would have",
+    "could've": "could have",
+    "should've": "should have",
+}
+
+def expand_contractions(text):
+    if not isinstance(text, str):
+        return text
+    for contraction, expanded in CONTRACTIONS.items():
+        text = re.sub(re.escape(contraction), expanded, text)
+    return text
+
 # ==============================================================================
 # HELPER FUNCTIONS
 # ==============================================================================
@@ -174,20 +225,20 @@ STOP_WORDS = set(stopwords.words('english'))
 
 
 def clean_text(text):
-    """Full text cleaning pipeline."""
     if not isinstance(text, str):
         return text
-    text = text.lower()                                                   # 1. lowercase
-    text = re.sub(r'http\S+|www\S+', '', text)                           # 2. remove URLs
-    text = EMOJI_PATTERN.sub('', text)                                    # 3. remove emojis
-    text = re.sub(r'\*{1,2}|_{1,2}', '', text)                          # 4. remove bold/italic markdown
-    text = re.sub(r'rm\s*\d+|\d+\s*rm', '', text)                       # 5. remove currency (rm60, 60rm)
-    text = re.sub(r'\d+', '', text)                                       # 6. remove remaining numbers
-    text = re.sub(r':', ' ', text)                                        # 7. replace colons with space
-    text = re.sub(r'[^\w\s]', '', text)                                   # 8. remove punctuation
-    text = re.sub(r'(.)\1{2,}', r'\1', text)                            # 9. remove repeated chars
-    text = ' '.join([w for w in text.split() if w not in STOP_WORDS])    # 10. remove stopwords
-    text = re.sub(r'\s+', ' ', text).strip()                             # 11. remove extra whitespace
+    text = text.lower()
+    text = re.sub(r'http\S+|www\S+', '', text)               # 2. remove URLs
+    text = EMOJI_PATTERN.sub('', text)                        # 3. remove emojis
+    text = re.sub(r'\*{1,2}|_{1,2}', '', text)              # 4. remove markdown
+    text = expand_contractions(text)                          # 5. expand contractions ← add here
+    text = re.sub(r'rm\s*\d+|\d+\s*rm', '', text)           # 6. remove currency
+    text = re.sub(r'\d+', '', text)                          # 7. remove numbers
+    text = re.sub(r':', ' ', text)                           # 8. replace colons
+    text = re.sub(r'[^\w\s]', '', text)                      # 9. remove punctuation
+    text = re.sub(r'(.)\1{2,}', r'\1', text)                # 10. remove repeated chars
+    text = ' '.join([w for w in text.split() if w not in STOP_WORDS])
+    text = re.sub(r'\s+', ' ', text).strip()
     return text
 
 
