@@ -21,11 +21,11 @@ from sklearn.model_selection import train_test_split
 from deep_translator import GoogleTranslator
 
 # Download required NLTK resources
-nltk.download('stopwords',                    quiet=True)
-nltk.download('punkt',                        quiet=True)
-nltk.download('punkt_tab',                    quiet=True)
-nltk.download('wordnet',                      quiet=True)
-nltk.download('averaged_perceptron_tagger',   quiet=True)
+nltk.download('stopwords',                      quiet=True)
+nltk.download('punkt',                          quiet=True)
+nltk.download('punkt_tab',                      quiet=True)
+nltk.download('wordnet',                        quiet=True)
+nltk.download('averaged_perceptron_tagger',     quiet=True)
 nltk.download('averaged_perceptron_tagger_eng', quiet=True)
 
 # ==============================================================================
@@ -34,76 +34,78 @@ nltk.download('averaged_perceptron_tagger_eng', quiet=True)
 
 SLANG_DICT = {
     # BASIC SHORT FORMS
-    'x': 'tidak',       'tak': 'tidak',       'takde': 'tidak ada',
-    'xde': 'tidak ada', 'xtau': 'tidak tahu', 'xpe': 'tidak apa',
-    'xboleh': 'tidak boleh',                  'xbole': 'tidak boleh',
-    'dah': 'sudah',     'dh': 'sudah',
-    'sy': 'saya',       'aq': 'saya',         'ak': 'saya',
-    'u': 'you',         'ur': 'your',
+    'x': 'tiada',        'tak': 'tiada',        'takde': 'tiada',
+    'xde': 'tiada',      'xtau': 'tidak tahu',  'xpe': 'tidak apa',
+    'xboleh': 'tidak boleh',                     'xbole': 'tidak boleh',
+    'dah': 'sudah',      'dh': 'sudah',
+    'sy': 'saya',        'aq': 'saya',           'ak': 'saya',
+    'u': 'you',          'ur': 'your',
 
     # CONNECTORS / FILLERS
-    'dgn': 'dengan',    'dengn': 'dengan',    'ngn': 'dengan',
+    'dgn': 'dengan',     'dengn': 'dengan',      'ngn': 'dengan',
     '&': 'dan',
-    'tp': 'tetapi',     'tpi': 'tetapi',      'tapi': 'tetapi',
-    'je': 'sahaja',     'jer': 'sahaja',
-    'ni': 'ini',        'tu': 'itu',          'kt': 'dekat',
-    'yg': 'yang',       'utk': 'untuk',
-    'sbb': 'sebab',     'sb': 'sebab',
-    'pastu': 'selepas itu',                   'pastuh': 'selepas itu',
+    'tp': 'tetapi',      'tpi': 'tetapi',        'tapi': 'tetapi',
+    'je': 'sahaja',      'jer': 'sahaja',
+    'ni': 'ini',         'tu': 'itu',            'kt': 'dekat',
+    'yg': 'yang',        'utk': 'untuk',
+    'sbb': 'sebab',      'sb': 'sebab',
+    'pastu': 'selepas itu',                       'pastuh': 'selepas itu',
 
     # QUANTITY / TIME
-    'bape': 'berapa',   'brp': 'berapa',
-    'lame': 'lama',     'lamer': 'lama',
+    'bape': 'berapa',    'brp': 'berapa',
+    'lame': 'lama',      'lamer': 'lama',
     'jgk': 'juga',
 
     # PRODUCT TERMS
-    'brg': 'barang',    'barag': 'barang',    'barang2': 'barang-barang',
-    'buyi': 'bunyi',    'bnyi': 'bunyi',      'bunyii': 'bunyi',
-    'gune': 'guna',     'pakai': 'guna',
-    'rm': 'ringgit',    'qty': 'quantity',
+    'brg': 'barang',     'barag': 'barang',      'barang2': 'barang-barang',
+    'buyi': 'bunyi',     'bnyi': 'bunyi',        'bunyii': 'bunyi',
+    'gune': 'guna',      'pakai': 'guna',
+    'qty': 'quantity',
 
     # QUALITY / CONDITION
-    'ok': 'okay',       'okayy': 'okay',      'okey': 'okay',
-    'btol': 'betul',    'betui': 'betul',
-    'rengan': 'ringan', 'berat2': 'berat',
-    'asik': 'asyik',    'asyik2': 'asyik',
-    'sgt': 'sangat',    'sangat2': 'sangat',
+    'ok': 'okay',        'okayy': 'okay',        'okey': 'okay',
+    'btol': 'betul',     'betui': 'betul',
+    'rengan': 'ringan',  'berat2': 'berat',
+    'asik': 'asyik',     'asyik2': 'asyik',
+    'sgt': 'sangat',     'sangat2': 'sangat',
 
     # MALAY WORDS / EXPRESSIONS
-    'mmg': 'memang',    'mcm': 'macam',       'mcm2': 'macam-macam',
-    'mkin': 'makin',    'kdg': 'kadang',      'kdg2': 'kadang-kadang',
-    'lncr': 'lancar',   'tgk': 'tengok',      'tgok': 'tengok',
-    'blh': 'boleh',     'bole': 'boleh',
-    'dlm': 'dalam',     'drpd': 'daripada',   'drp': 'daripada',
-    'kat': 'dekat',     'nk': 'mahu',         'nak': 'mahu',
-    'dpt': 'dapat',     'dpt2': 'dapat-dapat','xdpt': 'tidak dapat',
+    'mmg': 'memang',     'mcm': 'macam',         'mcm2': 'macam-macam',
+    'mkin': 'makin',     'kdg': 'kadang',        'kdg2': 'kadang-kadang',
+    'lncr': 'lancar',    'tgk': 'tengok',        'tgok': 'tengok',
+    'blh': 'boleh',      'bole': 'boleh',
+    'dlm': 'dalam',      'drpd': 'daripada',     'drp': 'daripada',
+    'kat': 'dekat',      'nk': 'mahu',           'nak': 'mahu',
+    'dpt': 'dapat',      'dpt2': 'dapat-dapat',  'xdpt': 'tidak dapat',
     'harap2': 'harap-harap',
-    'mantapp': 'mantap','mantappp': 'mantap',
-    'bestla': 'best',   'lawa': 'cantik',
+    'mantapp': 'mantap', 'mantappp': 'mantap',
+    'bestla': 'best',    'lawa': 'cantik',
     'hampeh': 'hampa',
-    'powerfull': 'powerful',                  'pawer': 'power',
-    'wayer': 'wayar',   'cas': 'charge',      'caj': 'charge',
-    'bot': 'bought',
+    'powerfull': 'powerful',                      'pawer': 'power',
+    'wayer': 'wayar',    'cas': 'charge',         'caj': 'charge',
+    'bot': 'bought',     'cust': 'customer',      'gt': 'got',
 
     # FILLER / EXPRESSIONS (removed)
-    'sumpah': '', 'la': '', 'lah': '', 'leh': '',
+    'sumpah': '', 'la': '',  'lah': '', 'leh': '',
     'woo': '',    'nih': '', 'wei': '', 'weh': '',
     'haha': '',   'hahaha': '', 'hahahha': '',
     'huhu': '',   'hehe': '',
-    'hmm': '',    'hhm': '',
+    'hmm': '',    'hhm': '', 'meh': '', 'huh': '',
+    'wow': '',    'woah': '',
 
     # ENGLISH MIX / CHAT ABBREVIATIONS
-    'pls': 'please',        'thx': 'thank you',
-    'tq': 'thank you',      'tqvm': 'thank you very much',
-    'alr': 'already',       'tbh': 'to be honest',
-    'imo': 'in my opinion', 'omg': 'oh my god',
-    'info': 'information',  'pic': 'picture',       'pics': 'pictures',
-    'msg': 'message',       'ori': 'original',      'orig': 'original',
-    'rec': 'recommend',     'recom': 'recommend',
-    'diff': 'different',    'prob': 'problem',      'probs': 'problems',
-    'def': 'definitely',    'defo': 'definitely',   'esp': 'especially',
-    'approx': 'approximately',                       'avg': 'average',
-    'btw': 'by the way',    'fyi': 'for your information',
+    'pls': 'please',         'thx': 'thank you',
+    'tq': 'thank you',       'tqvm': 'thank you very much',
+    'alr': 'already',        'tbh': 'to be honest',
+    'imo': 'in my opinion',  'omg': 'oh my god',
+    'info': 'information',   'pic': 'picture',       'pics': 'pictures',
+    'msg': 'message',        'ori': 'original',      'orig': 'original',
+    'rec': 'recommend',      'recom': 'recommend',
+    'diff': 'different',     'prob': 'problem',      'probs': 'problems',
+    'def': 'definitely',     'defo': 'definitely',   'esp': 'especially',
+    'approx': 'approximately',                        'avg': 'average',
+    'btw': 'by the way',     'fyi': 'for your information',
+    'superb': 'superb',
     'gg': '', 'lol': '', 'xd': '',
 }
 
@@ -112,7 +114,7 @@ SLANG_DICT = {
 # ==============================================================================
 
 def normalize_slang(text):
-    """Replace slang/abbreviations with full forms using the SLANG_DICT."""
+    """Replace slang/abbreviations with full forms using SLANG_DICT."""
     if not isinstance(text, str):
         return text
     words = text.split()
@@ -175,15 +177,17 @@ def clean_text(text):
     """Full text cleaning pipeline."""
     if not isinstance(text, str):
         return text
-    text = text.lower()
-    text = re.sub(r'http\S+|www\S+', '', text)              # remove URLs
-    text = EMOJI_PATTERN.sub('', text)                       # remove emojis
-    text = re.sub(r'(\d+)/(\d+)', r'\1 out of \2', text)    # 7/10 -> 7 out of 10
-    text = re.sub(r'[:]', ' ', text)                         # "Performance:good" -> "Performance good"
-    text = re.sub(r'[^\w\s/]', '', text)                     # remove punctuation (keep / for "out of" format)
-    text = re.sub(r'(.)\1{2,}', r'\1', text)                # remove repeated chars
-    text = ' '.join([w for w in text.split() if w not in STOP_WORDS])
-    text = re.sub(r'\s+', ' ', text).strip()                 # remove extra whitespace
+    text = text.lower()                                                   # 1. lowercase
+    text = re.sub(r'http\S+|www\S+', '', text)                           # 2. remove URLs
+    text = EMOJI_PATTERN.sub('', text)                                    # 3. remove emojis
+    text = re.sub(r'\*{1,2}|_{1,2}', '', text)                          # 4. remove bold/italic markdown
+    text = re.sub(r'rm\s*\d+|\d+\s*rm', '', text)                       # 5. remove currency (rm60, 60rm)
+    text = re.sub(r'\d+', '', text)                                       # 6. remove remaining numbers
+    text = re.sub(r':', ' ', text)                                        # 7. replace colons with space
+    text = re.sub(r'[^\w\s]', '', text)                                   # 8. remove punctuation
+    text = re.sub(r'(.)\1{2,}', r'\1', text)                            # 9. remove repeated chars
+    text = ' '.join([w for w in text.split() if w not in STOP_WORDS])    # 10. remove stopwords
+    text = re.sub(r'\s+', ' ', text).strip()                             # 11. remove extra whitespace
     return text
 
 
@@ -324,14 +328,12 @@ if __name__ == '__main__':
 
 # =============================================================================
 # TO USE FOR WEBSITE
-# from preprocessing import preprocess_dataframe
+# from preprocessing import preprocess_dataframe, split_dataset
 #
 # @app.route('/upload', methods=['POST'])
 # def upload():
-#    file = request.files['file']
-#    df = pd.read_csv(file)
-
-#    processed_df = preprocess_dataframe(df)
-
-#    return processed_df.to_json()
+#     file = request.files['file']
+#     df = pd.read_csv(file)
+#     processed_df = preprocess_dataframe(df)
+#     return processed_df.to_json()
 # =============================================================================
