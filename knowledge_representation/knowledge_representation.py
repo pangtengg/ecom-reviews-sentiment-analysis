@@ -66,6 +66,36 @@ print(f"Train rows: {len(train_df)}")
 vectorizer = TfidfVectorizer(**TFIDF_PARAMS)
 X_train = vectorizer.fit_transform(train_df["token_text"])
 
+val_df = df[df["split"] == "val"].copy().reset_index(drop=True)
+test_df = df[df["split"] == "test"].copy().reset_index(drop=True)
+
+val_df["token_text"] = val_df["review_tokens"].apply(parse_tokens)
+test_df["token_text"] = test_df["review_tokens"].apply(parse_tokens)
+
+X_val = vectorizer.transform(val_df["token_text"])
+X_test = vectorizer.transform(test_df["token_text"])
+
+y_train = train_df["sentiment"]
+y_val = val_df["sentiment"]
+y_test = test_df["sentiment"]
+
+# Save these too
+with open(f"{OUTPUT_DIR}/tfidf_X_val.pkl", "wb") as f:
+    pickle.dump(X_val, f)
+
+with open(f"{OUTPUT_DIR}/tfidf_X_test.pkl", "wb") as f:
+    pickle.dump(X_test, f)
+
+with open(f"{OUTPUT_DIR}/y_train.pkl", "wb") as f:
+    pickle.dump(y_train, f)
+
+with open(f"{OUTPUT_DIR}/y_val.pkl", "wb") as f:
+    pickle.dump(y_val, f)
+
+with open(f"{OUTPUT_DIR}/y_test.pkl", "wb") as f:
+    pickle.dump(y_test, f)
+
+
 print(f"Vocublary size: {len(vectorizer.vocabulary_)}")
 print(f"Feature Matrix: {X_train.shape}")
 

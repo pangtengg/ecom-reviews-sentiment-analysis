@@ -222,6 +222,8 @@ EMOJI_PATTERN = re.compile("["
 "]+", flags=re.UNICODE)
 
 STOP_WORDS = set(stopwords.words('english'))
+NEGATION_WORDS = {'not', 'no', 'nor', 'never', 'cannot', 'without', 'nothing', 'nobody'}
+STOP_WORDS = STOP_WORDS - NEGATION_WORDS
 
 
 def clean_text(text):
@@ -296,11 +298,12 @@ def preprocess_dataframe(df):
 
     # Step 1: Slang normalization
     print("Step 1/5: Normalizing slang...")
-    df['review_text'] = df['review_text'].apply(normalize_slang)
+    df['review_text_raw'] = df['review_text']
+    df['review_text_fixed'] = df['review_text'].apply(normalize_slang)
 
     # Step 2: Translation
     print("Step 2/5: Translating to English...")
-    df['review_text_translated'] = df['review_text'].apply(safe_translate)
+    df['review_text_translated'] = df['review_text_fixed'].apply(safe_translate)
     print("         Translation complete.")
 
     # Step 3: Text cleaning
