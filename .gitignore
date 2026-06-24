@@ -204,6 +204,10 @@ cython_debug/
 # Temporary file for partial code execution
 tempCodeRunnerFile.py
 
+# Model training outputs
+model_training/distilbert_outputs/
+model_training/distilbert_sentiment_model/
+
 # Ruff stuff:
 .ruff_cache/
 
