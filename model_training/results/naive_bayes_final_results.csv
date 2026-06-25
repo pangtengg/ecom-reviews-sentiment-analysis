@@ -1,0 +1,2 @@
+Model,Accuracy,Macro F1,Weighted F1,Negative F1,Neutral F1,Positive F1,Macro Precision,Macro Recall
+Naive Bayes (alpha=0.01),0.7283,0.6057,0.6967,0.7143,0.2727,0.8302,0.6622,0.6044
