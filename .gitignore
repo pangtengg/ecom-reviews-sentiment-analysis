@@ -156,6 +156,7 @@ venv/
 ENV/
 env.bak/
 venv.bak/
+.agents/
 
 # Spyder project settings
 .spyderproject
@@ -202,6 +203,10 @@ cython_debug/
 # .vscode/
 # Temporary file for partial code execution
 tempCodeRunnerFile.py
+
+# Model training outputs
+model_training/distilbert_outputs/
+model_training/distilbert_sentiment_model/
 
 # Ruff stuff:
 .ruff_cache/
