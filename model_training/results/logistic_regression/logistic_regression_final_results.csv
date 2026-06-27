@@ -1,0 +1,2 @@
+Model,Accuracy,Macro F1,Weighted F1,Negative F1,Neutral F1,Positive F1,Macro Precision,Macro Recall
+Logistic Regression (alpha=10),0.7065,0.5347,0.6577,0.6552,0.1,0.8491,0.556,0.5584
