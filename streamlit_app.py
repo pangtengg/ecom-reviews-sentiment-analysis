@@ -1,9 +1,14 @@
 import re
+import json
 from datetime import datetime, timedelta
+from pathlib import Path
 
 import pandas as pd
 import plotly.express as px
 import streamlit as st
+import torch
+from transformers import AutoModelForSequenceClassification, AutoTokenizer
+import numpy as np
 
 try:
     from wordcloud import WordCloud
@@ -12,6 +17,13 @@ try:
     WORDCLOUD_AVAILABLE = True
 except ImportError:
     WORDCLOUD_AVAILABLE = False
+
+try:
+    from lime.lime_text import LimeTextExplainer
+
+    LIME_AVAILABLE = True
+except ImportError:
+    LIME_AVAILABLE = False
 
 
 ASPECT_KEYWORDS = {
@@ -129,6 +141,15 @@ POSITIVE_WORDS = [
 ]
 
 
+MODEL_DIR = Path(__file__).parent / "model_training" / "results" / "distilbert"
+SENTIMENT_LABELS = {
+    "negative": "Negative",
+    "neutral": "Neutral",
+    "positive": "Positive",
+}
+LIME_CLASS_NAMES = ["Negative", "Neutral", "Positive"]
+
+
 def load_demo_data():
     base_date = datetime.today().date()
     demo_reviews = [
@@ -181,17 +202,81 @@ def clean_text(text):
     return text
 
 
+@st.cache_resource(show_spinner=False)
+def load_distilbert_model():
+    if not MODEL_DIR.exists():
+        return None, None, None
+
+    tokenizer = AutoTokenizer.from_pretrained(MODEL_DIR)
+    model = AutoModelForSequenceClassification.from_pretrained(MODEL_DIR)
+    model.to("cpu")
+    model.eval()
+
+    label_path = MODEL_DIR / "label_mapping.json"
+    if label_path.exists():
+        with open(label_path, "r", encoding="utf-8") as f:
+            mapping = json.load(f)
+        id2label = {int(k): v for k, v in mapping["id2label"].items()}
+    else:
+        id2label = model.config.id2label
+
+    return tokenizer, model, id2label
+
+
 def predict_sentiment(text):
-    # TODO: Load trained model here later
-    # model = joblib.load("sentiment_model.pkl")
-    # vectorizer = joblib.load("tfidf_vectorizer.pkl")
-    # TODO: replace with trained model later
+    tokenizer, model, id2label = load_distilbert_model()
+    if tokenizer is not None and model is not None:
+        probabilities = predict_sentiment_probabilities([str(text)])[0]
+        pred_id = int(np.argmax(probabilities))
+        label = id2label[pred_id]
+        return SENTIMENT_LABELS.get(str(label).lower(), str(label).title())
+
     cleaned = clean_text(text)
     if any(word in cleaned for word in NEGATIVE_WORDS):
         return "Negative"
     if any(word in cleaned for word in POSITIVE_WORDS):
         return "Positive"
     return "Neutral"
+
+
+def predict_sentiment_probabilities(texts):
+    tokenizer, model, _ = load_distilbert_model()
+    if tokenizer is None or model is None:
+        return np.array([rule_based_probabilities(text) for text in texts])
+
+    inputs = tokenizer(
+        [str(text) for text in texts],
+        return_tensors="pt",
+        truncation=True,
+        padding=True,
+        max_length=160,
+    )
+    with torch.no_grad():
+        logits = model(**inputs).logits
+    return torch.softmax(logits, dim=1).cpu().numpy()
+
+
+def rule_based_probabilities(text):
+    prediction = predict_rule_based_sentiment(text)
+    probabilities = {"Negative": 0.05, "Neutral": 0.05, "Positive": 0.05}
+    probabilities[prediction] = 0.90
+    return [probabilities[label] for label in LIME_CLASS_NAMES]
+
+
+def predict_rule_based_sentiment(text):
+    cleaned = clean_text(text)
+    if any(word in cleaned for word in NEGATIVE_WORDS):
+        return "Negative"
+    if any(word in cleaned for word in POSITIVE_WORDS):
+        return "Positive"
+    return "Neutral"
+
+
+@st.cache_resource(show_spinner=False)
+def load_lime_explainer():
+    if not LIME_AVAILABLE:
+        return None
+    return LimeTextExplainer(class_names=LIME_CLASS_NAMES)
 
 
 def detect_aspect(text):
@@ -324,10 +409,77 @@ def read_uploaded_file(uploaded_file):
 def add_predictions(df):
     analyzed = df.copy()
     analyzed["review_text"] = analyzed["review_text"].fillna("").astype(str)
+    sentiment_text_col = "review_text_translated" if "review_text_translated" in analyzed.columns else "review_text"
+    analyzed[sentiment_text_col] = analyzed[sentiment_text_col].fillna("").astype(str)
     analyzed["clean_review_text"] = analyzed["review_text"].apply(clean_text)
-    analyzed["predicted_sentiment"] = analyzed["review_text"].apply(predict_sentiment)
+    analyzed["model_input_text"] = analyzed[sentiment_text_col]
+    analyzed["predicted_sentiment"] = analyzed["model_input_text"].apply(predict_sentiment)
     analyzed["detected_aspect"] = analyzed["review_text"].apply(detect_aspect)
     return analyzed
+
+
+def render_lime_explanation(df):
+    st.subheader("Explain One Sentiment Prediction")
+    if not LIME_AVAILABLE:
+        st.info("Install LIME to enable word-level explanations: pip install lime")
+        return
+
+    if df.empty:
+        st.info("No reviews available to explain.")
+        return
+
+    explainer = load_lime_explainer()
+    if explainer is None:
+        st.info("LIME is not available in this environment.")
+        return
+
+    display_options = [
+        f"{idx}: {row['predicted_sentiment']} - {str(row['review_text'])[:90]}"
+        for idx, row in df.head(100).iterrows()
+    ]
+    selected = st.selectbox("Choose a review to explain", display_options)
+    selected_idx = int(selected.split(":", 1)[0])
+    row = df.loc[selected_idx]
+    text_to_explain = str(row.get("model_input_text", row["review_text"]))
+
+    st.write("Model input")
+    st.caption(text_to_explain)
+
+    if st.button("Generate LIME Explanation"):
+        probabilities = predict_sentiment_probabilities([text_to_explain])[0]
+        predicted_id = int(np.argmax(probabilities))
+        predicted_label = LIME_CLASS_NAMES[predicted_id]
+
+        explanation = explainer.explain_instance(
+            text_to_explain,
+            predict_sentiment_probabilities,
+            labels=[predicted_id],
+            num_features=10,
+            num_samples=500,
+        )
+        explanation_df = pd.DataFrame(
+            explanation.as_list(label=predicted_id),
+            columns=["word", "influence"],
+        )
+        explanation_df["direction"] = explanation_df["influence"].apply(
+            lambda value: f"Pushes {predicted_label}" if value >= 0 else f"Pushes away from {predicted_label}"
+        )
+
+        st.write(f"Predicted sentiment: {predicted_label} ({probabilities[predicted_id]:.2%} confidence)")
+        fig = px.bar(
+            explanation_df,
+            x="influence",
+            y="word",
+            color="direction",
+            orientation="h",
+            color_discrete_map={
+                f"Pushes {predicted_label}": "#16a34a",
+                f"Pushes away from {predicted_label}": "#dc2626",
+            },
+        )
+        fig.update_layout(height=360, margin=dict(l=10, r=10, t=20, b=10), yaxis={"categoryorder": "total ascending"})
+        st.plotly_chart(fig, width="stretch")
+        st.dataframe(explanation_df, width="stretch", hide_index=True)
 
 
 def create_wordcloud(text_series, title):
@@ -430,6 +582,11 @@ def main():
         st.warning("Please upload a file with a review_text column.")
         st.stop()
 
+    if "review_text_translated" in raw_df.columns:
+        st.caption("Sentiment model input: review_text_translated")
+    else:
+        st.caption("Sentiment model input: review_text. For best DistilBERT results, upload a preprocessed file with review_text_translated.")
+
     analyzed_df = add_predictions(raw_df)
     dashboard_df = analyzed_df
 
@@ -483,6 +640,8 @@ def main():
     optional_columns = ["review_date", "star_rating"]
     table_columns.extend([column for column in optional_columns if column in dashboard_df.columns])
     st.dataframe(dashboard_df[table_columns], width="stretch", hide_index=True)
+
+    render_lime_explanation(dashboard_df)
 
     download_df = raw_df.copy()
     download_df["predicted_sentiment"] = analyzed_df["predicted_sentiment"]
