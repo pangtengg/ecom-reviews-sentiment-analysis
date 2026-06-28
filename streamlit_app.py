@@ -1,6 +1,6 @@
 import re
 import json
-from datetime import datetime, timedelta
+import html
 from pathlib import Path
 
 import pandas as pd
@@ -150,48 +150,6 @@ SENTIMENT_LABELS = {
 LIME_CLASS_NAMES = ["Negative", "Neutral", "Positive"]
 
 
-def load_demo_data():
-    base_date = datetime.today().date()
-    demo_reviews = [
-        {
-            "review_text": "Fast delivery and product quality is good.",
-            "review_date": base_date - timedelta(days=13),
-            "star_rating": 5,
-        },
-        {
-            "review_text": "Packaging was damaged when received.",
-            "review_date": base_date - timedelta(days=11),
-            "star_rating": 2,
-        },
-        {
-            "review_text": "Item arrived late and box was dented.",
-            "review_date": base_date - timedelta(days=9),
-            "star_rating": 2,
-        },
-        {
-            "review_text": "Worth the price and works well.",
-            "review_date": base_date - timedelta(days=6),
-            "star_rating": 5,
-        },
-        {
-            "review_text": "Product quality is poor and stopped working after one week.",
-            "review_date": base_date - timedelta(days=5),
-            "star_rating": 1,
-        },
-        {
-            "review_text": "Seller replied quickly and solved my exchange request.",
-            "review_date": base_date - timedelta(days=4),
-            "star_rating": 4,
-        },
-        {
-            "review_text": "Courier was slow but item quality is okay.",
-            "review_date": base_date - timedelta(days=2),
-            "star_rating": 3,
-        },
-    ]
-    return pd.DataFrame(demo_reviews)
-
-
 def clean_text(text):
     if pd.isna(text):
         return ""
@@ -237,6 +195,33 @@ def predict_sentiment(text):
     if any(word in cleaned for word in POSITIVE_WORDS):
         return "Positive"
     return "Neutral"
+
+
+def predict_sentiments(texts, batch_size=32, progress_callback=None):
+    tokenizer, model, id2label = load_distilbert_model()
+    texts = [str(text) for text in texts]
+    total = len(texts)
+    predictions = []
+
+    if tokenizer is None or model is None:
+        for position, text in enumerate(texts, start=1):
+            predictions.append(predict_rule_based_sentiment(text))
+            if progress_callback is not None:
+                progress_callback(position, total)
+        return predictions
+
+    for start in range(0, total, batch_size):
+        batch = texts[start : start + batch_size]
+        probabilities = predict_sentiment_probabilities(batch)
+        pred_ids = np.argmax(probabilities, axis=1)
+        for pred_id in pred_ids:
+            label = id2label[int(pred_id)]
+            predictions.append(SENTIMENT_LABELS.get(str(label).lower(), str(label).title()))
+
+        if progress_callback is not None:
+            progress_callback(min(start + len(batch), total), total)
+
+    return predictions
 
 
 def predict_sentiment_probabilities(texts):
@@ -285,34 +270,6 @@ def detect_aspect(text):
         if any(keyword in cleaned for keyword in keywords):
             return aspect
     return "General"
-
-
-def generate_recommendations(df):
-    negative_df = df[df["predicted_sentiment"] == "Negative"]
-    if negative_df.empty:
-        return ["No high negative aspect detected yet. Add a trained model to unlock stronger complaint recommendations."]
-
-    aspect_counts = negative_df["detected_aspect"].value_counts()
-    total_negative = len(negative_df)
-    recommendations = []
-
-    checks = {
-        "Packaging": "Improve packaging materials, add bubble wrap, use stronger boxes, and add fragile labels.",
-        "Delivery": "Review courier performance and improve estimated delivery time.",
-        "Product Quality": "Check supplier quality control and update product descriptions clearly.",
-        "Seller Service": "Improve response time and clarify refund/exchange policy.",
-        "Price / Value": "Review pricing strategy and offer bundles or vouchers.",
-    }
-
-    for aspect, message in checks.items():
-        share = aspect_counts.get(aspect, 0) / total_negative
-        if share >= 0.2:
-            recommendations.append(message)
-
-    if not recommendations:
-        recommendations.append("Negative reviews are spread across aspects. Review the table below to inspect individual complaints.")
-
-    return recommendations
 
 
 def plot_sentiment_distribution(df):
@@ -381,7 +338,7 @@ def plot_aspect_analysis(df):
         color="Aspect",
         color_discrete_sequence=px.colors.qualitative.Safe,
     )
-    frequency_fig.update_layout(showlegend=False, height=350, margin=dict(l=10, r=10, t=20, b=10))
+    frequency_fig.update_layout(showlegend=False, height=300, margin=dict(l=10, r=10, t=10, b=10))
 
     aspect_sentiment = pd.crosstab(df["detected_aspect"], df["predicted_sentiment"]).reset_index()
     for sentiment in ["Positive", "Neutral", "Negative"]:
@@ -406,20 +363,92 @@ def read_uploaded_file(uploaded_file):
     return pd.read_excel(uploaded_file)
 
 
-def add_predictions(df):
+def guess_text_column(columns):
+    preferred_names = [
+        "review_content",
+        "review content",
+        "review_body",
+        "review body",
+        "review_text",
+        "review text",
+        "review_description",
+        "review description",
+        "review",
+        "reviews",
+        "comment",
+        "comments",
+        "feedback",
+        "text",
+        "content",
+    ]
+    normalized = {str(column).lower().strip(): column for column in columns}
+    for name in preferred_names:
+        if name in normalized:
+            return normalized[name]
+
+    for column in columns:
+        lowered = str(column).lower()
+        if any(keyword in lowered for keyword in ["review", "comment", "feedback", "text"]):
+            return column
+
+    return columns[0] if len(columns) else None
+
+
+def is_text_candidate_column(column):
+    lowered = str(column).lower().strip()
+    excluded_keywords = [
+        "id",
+        "rating",
+        "score",
+        "count",
+        "date",
+        "time",
+        "price",
+        "percentage",
+        "product",
+        "category",
+    ]
+    if any(keyword in lowered for keyword in excluded_keywords):
+        return False
+    return any(keyword in lowered for keyword in ["review", "comment", "feedback", "text", "content"])
+
+
+def get_candidate_text_columns(columns):
+    candidates = [column for column in columns if is_text_candidate_column(column)]
+    priority = ["content", "body", "text", "comment", "feedback", "review", "title"]
+    return sorted(
+        candidates,
+        key=lambda column: next(
+            (index for index, keyword in enumerate(priority) if keyword in str(column).lower()),
+            len(priority),
+        ),
+    )
+
+
+def add_predictions(df, review_text_col, sentiment_text_col=None, progress_callback=None):
     analyzed = df.copy()
-    analyzed["review_text"] = analyzed["review_text"].fillna("").astype(str)
-    sentiment_text_col = "review_text_translated" if "review_text_translated" in analyzed.columns else "review_text"
+    analyzed["review_text"] = analyzed[review_text_col].fillna("").astype(str)
+    if sentiment_text_col is None:
+        sentiment_text_col = "review_text_translated" if "review_text_translated" in analyzed.columns else "review_text"
     analyzed[sentiment_text_col] = analyzed[sentiment_text_col].fillna("").astype(str)
     analyzed["clean_review_text"] = analyzed["review_text"].apply(clean_text)
     analyzed["model_input_text"] = analyzed[sentiment_text_col]
-    analyzed["predicted_sentiment"] = analyzed["model_input_text"].apply(predict_sentiment)
+
+    analyzed["predicted_sentiment"] = predict_sentiments(
+        analyzed["model_input_text"].tolist(),
+        batch_size=32,
+        progress_callback=progress_callback,
+    )
     analyzed["detected_aspect"] = analyzed["review_text"].apply(detect_aspect)
     return analyzed
 
 
-def render_lime_explanation(df):
-    st.subheader("Explain One Sentiment Prediction")
+def render_lime_explanation(df, show_header=True):
+    if show_header:
+        st.subheader("Explain One Sentiment Prediction")
+    else:
+        st.markdown("**Explain one sentiment prediction**")
+
     if not LIME_AVAILABLE:
         st.info("Install LIME to enable word-level explanations: pip install lime")
         return
@@ -515,12 +544,25 @@ def render_kpi_cards(df):
     if not negative_aspects.empty:
         common_negative_aspect = negative_aspects.value_counts().idxmax()
 
+    card_data = [
+        ("Total reviews", f"{total:,}", "kpi-card-blue"),
+        ("Positive %", f"{positive}%", "kpi-card-green"),
+        ("Neutral %", f"{neutral}%", "kpi-card-amber"),
+        ("Negative %", f"{negative}%", "kpi-card-red"),
+        ("Top negative aspect", common_negative_aspect, "kpi-card-violet"),
+    ]
+
     cards = st.columns(5)
-    cards[0].metric("Total reviews", f"{total:,}")
-    cards[1].metric("Positive %", f"{positive}%")
-    cards[2].metric("Neutral %", f"{neutral}%")
-    cards[3].metric("Negative %", f"{negative}%")
-    cards[4].metric("Top negative aspect", common_negative_aspect)
+    for column, (label, value, class_name) in zip(cards, card_data):
+        column.markdown(
+            f"""
+            <div class="kpi-card {class_name}">
+                <div class="kpi-label">{html.escape(label)}</div>
+                <div class="kpi-value">{html.escape(str(value))}</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
 
 
 def configure_page():
@@ -533,22 +575,31 @@ def configure_page():
         """
         <style>
         .block-container {padding-top: 1.5rem;}
-        [data-testid="stMetric"] {
-            background: #f8fafc;
-            border: 1px solid #cbd5e1;
+        .kpi-card {
+            min-height: 104px;
             border-radius: 8px;
             padding: 14px 16px;
-            box-shadow: 0 1px 2px rgba(15, 23, 42, 0.05);
+            border: 1px solid rgba(148, 163, 184, 0.35);
+            box-shadow: 0 10px 22px rgba(15, 23, 42, 0.14);
         }
-        [data-testid="stMetric"] label,
-        [data-testid="stMetric"] [data-testid="stMetricLabel"] {
-            color: #334155;
-            font-weight: 600;
-        }
-        [data-testid="stMetric"] [data-testid="stMetricValue"] {
-            color: #0f172a;
+        .kpi-label {
+            font-size: 0.82rem;
             font-weight: 700;
+            color: rgba(15, 23, 42, 0.72);
+            margin-bottom: 8px;
         }
+        .kpi-value {
+            font-size: clamp(1.45rem, 1.8vw, 2rem);
+            line-height: 1.15;
+            font-weight: 800;
+            color: #0f172a;
+            overflow-wrap: anywhere;
+        }
+        .kpi-card-blue { background: linear-gradient(135deg, #e0f2fe 0%, #f8fafc 72%); border-color: #7dd3fc; }
+        .kpi-card-green { background: linear-gradient(135deg, #dcfce7 0%, #f8fafc 72%); border-color: #86efac; }
+        .kpi-card-amber { background: linear-gradient(135deg, #fef3c7 0%, #f8fafc 72%); border-color: #fcd34d; }
+        .kpi-card-red { background: linear-gradient(135deg, #fee2e2 0%, #f8fafc 72%); border-color: #fca5a5; }
+        .kpi-card-violet { background: linear-gradient(135deg, #ede9fe 0%, #f8fafc 72%); border-color: #c4b5fd; }
         .dashboard-band {
             border: 1px solid #e5e7eb;
             border-radius: 8px;
@@ -565,29 +616,51 @@ def configure_page():
 def main():
     configure_page()
 
-    st.title("E-Commerce Sentiment Dashboard")
-    st.caption("Upload your Shopee or Lazada reviews and inspect customer sentiment to improve your sales.")
+    st.title("E-Commerce Review Sentiment Dashboard 🛒")
+    st.caption("Analyse customer sentiment, review aspects, and common product or service issues.")
 
-    uploaded_file = st.file_uploader("Upload review CSV or Excel", type=["csv", "xlsx", "xls"])
-    using_demo = uploaded_file is None
-
-    if using_demo:
-        raw_df = load_demo_data()
-        st.info("Demo mode is active because no seller file was uploaded.")
-    else:
-        raw_df = read_uploaded_file(uploaded_file)
-        st.dataframe(raw_df.head(20), width="stretch", hide_index=True)
-
-    if "review_text" not in raw_df.columns:
-        st.warning("Please upload a file with a review_text column.")
+    uploaded_file = st.file_uploader(
+        "Upload review CSV or Excel",
+        type=["csv", "xlsx", "xls"],
+        label_visibility="collapsed",
+    )
+    if uploaded_file is None:
         st.stop()
 
-    if "review_text_translated" in raw_df.columns:
-        st.caption("Sentiment model input: review_text_translated")
-    else:
-        st.caption("Sentiment model input: review_text. For best DistilBERT results, upload a preprocessed file with review_text_translated.")
+    raw_df = read_uploaded_file(uploaded_file)
+    st.dataframe(raw_df.head(20), width="stretch", hide_index=True)
 
-    analyzed_df = add_predictions(raw_df)
+    if raw_df.empty or len(raw_df.columns) == 0:
+        st.warning("The uploaded file is empty or does not contain any columns.")
+        st.stop()
+
+    columns = list(raw_df.columns)
+    text_candidates = get_candidate_text_columns(columns)
+    default_review_col = guess_text_column(columns)
+    if len(text_candidates) > 1:
+        review_text_col = st.selectbox(
+            "Select the column that contains customer reviews",
+            text_candidates,
+            index=text_candidates.index(default_review_col) if default_review_col in text_candidates else 0,
+        )
+    else:
+        review_text_col = text_candidates[0] if text_candidates else default_review_col
+        st.caption(f"Review column detected: {review_text_col}")
+
+    sentiment_text_col = "review_text_translated" if "review_text_translated" in raw_df.columns else review_text_col
+
+    progress_text = st.empty()
+    progress_bar = st.progress(0)
+
+    def update_prediction_progress(done, total):
+        percent = 0 if total == 0 else done / total
+        progress_bar.progress(percent)
+        progress_text.caption(f"Analysing reviews... {done:,} of {total:,}")
+
+    analyzed_df = add_predictions(raw_df, review_text_col, sentiment_text_col, update_prediction_progress)
+    progress_bar.empty()
+    progress_text.empty()
+
     dashboard_df = analyzed_df
 
     render_kpi_cards(dashboard_df)
@@ -606,25 +679,22 @@ def main():
             else:
                 st.plotly_chart(trend_fig, width="stretch")
         else:
-            st.info("Time-series trend is unavailable because no review date column was provided.")
+            st.info("Time-series trend unavailable because no date information provided.")
 
     st.subheader("Aspect Analysis")
     aspect_fig, aspect_sentiment_table, negative_ranking = plot_aspect_analysis(dashboard_df)
-    aspect_left, aspect_right = st.columns([1.15, 1])
-    with aspect_left:
+    aspect_chart_col, aspect_table_col, negative_table_col = st.columns([1.05, 1, 0.85])
+    with aspect_chart_col:
         st.plotly_chart(aspect_fig, width="stretch")
-    with aspect_right:
-        st.write("Aspect vs Sentiment")
-        st.dataframe(aspect_sentiment_table, width="stretch", hide_index=True)
-        st.write("Negative Aspect Ranking")
+    with aspect_table_col:
+        st.markdown("**Aspect vs Sentiment**")
+        st.dataframe(aspect_sentiment_table, width="stretch", hide_index=True, height=300)
+    with negative_table_col:
+        st.markdown("**Negative Aspect Ranking**")
         if negative_ranking.empty:
-            st.info("No negative reviews detected by the current sentiment placeholder.")
+            st.info("No negative reviews detected.")
         else:
-            st.dataframe(negative_ranking, width="stretch", hide_index=True)
-
-    st.subheader("Rule-Based Improvement Suggestions")
-    for recommendation in generate_recommendations(dashboard_df):
-        st.success(recommendation)
+            st.dataframe(negative_ranking, width="stretch", hide_index=True, height=300)
 
     wc_left, wc_right = st.columns(2)
     with wc_left:
@@ -635,13 +705,14 @@ def main():
             "Word Cloud: Negative Reviews Only",
         )
 
-    st.subheader("Analyzed Review Table")
+    st.subheader("Analyzed Reviews")
     table_columns = ["review_text", "predicted_sentiment", "detected_aspect"]
     optional_columns = ["review_date", "star_rating"]
     table_columns.extend([column for column in optional_columns if column in dashboard_df.columns])
     st.dataframe(dashboard_df[table_columns], width="stretch", hide_index=True)
 
-    render_lime_explanation(dashboard_df)
+    with st.expander("Explain a selected review prediction"):
+        render_lime_explanation(dashboard_df, show_header=False)
 
     download_df = raw_df.copy()
     download_df["predicted_sentiment"] = analyzed_df["predicted_sentiment"]
