@@ -321,18 +321,38 @@ def guess_date_column(columns):
     return None
 
 
-def plot_sentiment_trend(df, date_col):
+def resolve_trend_granularity(dates, selected_granularity):
+    if selected_granularity != "Auto":
+        return selected_granularity
+
+    date_span_days = (dates.max() - dates.min()).days
+    if date_span_days <= 90:
+        return "Daily"
+    if date_span_days <= 1095:
+        return "Monthly"
+    return "Yearly"
+
+
+def plot_sentiment_trend(df, date_col, selected_granularity="Auto"):
     trend = df.copy()
     trend["_trend_date"] = pd.to_datetime(trend[date_col], errors="coerce")
     trend = trend.dropna(subset=["_trend_date"])
     if trend.empty:
         return None
 
-    trend["date"] = trend["_trend_date"].dt.date
-    grouped = trend.groupby(["date", "predicted_sentiment"]).size().reset_index(name="Reviews")
+    granularity = resolve_trend_granularity(trend["_trend_date"], selected_granularity)
+    period_map = {
+        "Daily": ("D", "Review date"),
+        "Monthly": ("M", "Review month"),
+        "Yearly": ("Y", "Review year"),
+    }
+    period_freq, xaxis_title = period_map[granularity]
+
+    trend["period"] = trend["_trend_date"].dt.to_period(period_freq).dt.to_timestamp()
+    grouped = trend.groupby(["period", "predicted_sentiment"]).size().reset_index(name="Reviews")
     fig = px.line(
         grouped,
-        x="date",
+        x="period",
         y="Reviews",
         color="predicted_sentiment",
         markers=True,
@@ -346,7 +366,8 @@ def plot_sentiment_trend(df, date_col):
         height=330,
         margin=dict(l=10, r=10, t=20, b=10),
         legend_title_text="Sentiment",
-        xaxis_title="Review date",
+        xaxis_title=xaxis_title,
+        yaxis=dict(dtick=1, rangemode="tozero"),
     )
     return fig
 
@@ -698,7 +719,12 @@ def main():
         st.subheader("Sentiment Trend")
         date_col = guess_date_column(dashboard_df.columns)
         if date_col is not None:
-            trend_fig = plot_sentiment_trend(dashboard_df, date_col)
+            trend_granularity = st.selectbox(
+                "Trend granularity",
+                ["Auto", "Daily", "Monthly", "Yearly"],
+                index=0,
+            )
+            trend_fig = plot_sentiment_trend(dashboard_df, date_col, trend_granularity)
             if trend_fig is None:
                 st.info("Time-series trend is unavailable because no valid review date values were provided.")
             else:
