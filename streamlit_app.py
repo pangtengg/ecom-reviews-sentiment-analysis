@@ -297,14 +297,38 @@ def plot_sentiment_distribution(df):
     return fig
 
 
-def plot_sentiment_trend(df):
+def guess_date_column(columns):
+    preferred_names = [
+        "review_date",
+        "date",
+        "review date",
+        "created_at",
+        "created date",
+        "timestamp",
+        "time_stamp",
+        "time",
+    ]
+    normalized = {str(column).lower().strip(): column for column in columns}
+    for name in preferred_names:
+        if name in normalized:
+            return normalized[name]
+
+    for column in columns:
+        lowered = str(column).lower()
+        if "date" in lowered or "time" in lowered:
+            return column
+
+    return None
+
+
+def plot_sentiment_trend(df, date_col):
     trend = df.copy()
-    trend["review_date"] = pd.to_datetime(trend["review_date"], errors="coerce")
-    trend = trend.dropna(subset=["review_date"])
+    trend["_trend_date"] = pd.to_datetime(trend[date_col], errors="coerce")
+    trend = trend.dropna(subset=["_trend_date"])
     if trend.empty:
         return None
 
-    trend["date"] = trend["review_date"].dt.date
+    trend["date"] = trend["_trend_date"].dt.date
     grouped = trend.groupby(["date", "predicted_sentiment"]).size().reset_index(name="Reviews")
     fig = px.line(
         grouped,
@@ -672,8 +696,9 @@ def main():
 
     with right:
         st.subheader("Sentiment Trend")
-        if "review_date" in dashboard_df.columns:
-            trend_fig = plot_sentiment_trend(dashboard_df)
+        date_col = guess_date_column(dashboard_df.columns)
+        if date_col is not None:
+            trend_fig = plot_sentiment_trend(dashboard_df, date_col)
             if trend_fig is None:
                 st.info("Time-series trend is unavailable because no valid review date values were provided.")
             else:
@@ -707,7 +732,7 @@ def main():
 
     st.subheader("Analyzed Reviews")
     table_columns = ["review_text", "predicted_sentiment", "detected_aspect"]
-    optional_columns = ["review_date", "star_rating"]
+    optional_columns = [guess_date_column(dashboard_df.columns), "star_rating"]
     table_columns.extend([column for column in optional_columns if column in dashboard_df.columns])
     st.dataframe(dashboard_df[table_columns], width="stretch", hide_index=True)
 
